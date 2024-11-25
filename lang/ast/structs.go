@@ -4004,11 +4004,9 @@ func (obj *StmtProg) SetScope(scope *interfaces.Scope) error {
 			if len(fnList) == 1 {
 				f := fnList[0].Func // local reference to avoid changing it in the loop...
 				// add to scope, (overwriting, aka shadowing is ok)
-				loopScope.Functions[fn.Name] = &ExprPoly{ // XXX: is this ExprPoly approach optimal?
-					Definition: &ExprTopLevel{
-						Definition:    f, // store the *ExprFunc
-						CapturedScope: capturedScope,
-					},
+				loopScope.Functions[fn.Name] = &ExprTopLevel{
+					Definition:    f, // store the *ExprFunc
+					CapturedScope: capturedScope,
 				}
 				continue
 			}
@@ -8172,38 +8170,8 @@ func (obj *ExprCall) SetScope(scope *interfaces.Scope, sctx map[string]interface
 		target = f
 	}
 
-	if polymorphicTarget, isPolymorphic := target.(*ExprPoly); isPolymorphic {
-		// This function call refers to a polymorphic function
-		// expression. Those expressions can be instantiated at
-		// different types in different parts of the program, so that
-		// the definition we found has a "polymorphic" type.
-		//
-		// This particular call is one of the parts of the program which
-		// uses the polymorphic expression as a single, "monomorphic"
-		// type. We make a copy of the definition, and later each copy
-		// will be type-checked separately.
-		monomorphicTarget, err := polymorphicTarget.Definition.Copy()
-		if err != nil {
-			return errwrap.Wrapf(err, "could not copy the function definition `%s`", prefixedName)
-		}
-
-		// This call now has the only reference to monomorphicTarget, so
-		// it is our responsibility to scope-check it.
-		if err := monomorphicTarget.SetScope(scope, sctx); err != nil {
-			return errwrap.Wrapf(err, "scope-checking the function definition `%s`", prefixedName)
-		}
-
-		if obj.data.Debug {
-			obj.data.Logf("call $%s(): set scope: func pointer: %p (polymorphic) -> %p (copy)", prefixedName, &polymorphicTarget, &monomorphicTarget)
-		}
-
-		obj.expr = monomorphicTarget
-	} else {
-		// This call refers to a monomorphic expression which has
-		// already been scope-checked, so we don't need to scope-check
-		// it again.
-		obj.expr = target
-	}
+	// NOTE: We used to use an ExprPoly here, but we don't use it now.
+	obj.expr = target
 
 	return nil
 }
@@ -9099,130 +9067,6 @@ func (obj *ExprParam) SetValue(value types.Value) error {
 // This might get called speculatively (early) during unification to learn more.
 func (obj *ExprParam) Value() (types.Value, error) {
 	return nil, fmt.Errorf("no value for ExprParam")
-}
-
-// ExprPoly is a polymorphic expression that is a definition that can be used in
-// multiple places with different types. We must copy the definition at each
-// call site in order for the type checker to find a different type at each call
-// site. We create this copy inside SetScope, at which point we also recursively
-// call SetScope on the copy. We must be careful to use the scope captured at
-// the definition site, not the scope which is available at the call site.
-type ExprPoly struct {
-	Definition interfaces.Expr // The definition.
-}
-
-// String returns a short representation of this expression.
-func (obj *ExprPoly) String() string {
-	return fmt.Sprintf("polymorphic(%s)", obj.Definition.String())
-}
-
-// Apply is a general purpose iterator method that operates on any AST node. It
-// is not used as the primary AST traversal function because it is less readable
-// and easy to reason about than manually implementing traversal for each node.
-// Nevertheless, it is a useful facility for operations that might only apply to
-// a select number of node types, since they won't need extra noop iterators...
-func (obj *ExprPoly) Apply(fn func(interfaces.Node) error) error {
-	if err := obj.Definition.Apply(fn); err != nil {
-		return err
-	}
-	return fn(obj)
-}
-
-// Init initializes this branch of the AST, and returns an error if it fails to
-// validate.
-func (obj *ExprPoly) Init(data *interfaces.Data) error {
-	return obj.Definition.Init(data)
-}
-
-// Interpolate returns a new node (aka a copy) once it has been expanded. This
-// generally increases the size of the AST when it is used. It calls Interpolate
-// on any child elements and builds the new node with those new node contents.
-func (obj *ExprPoly) Interpolate() (interfaces.Expr, error) {
-	definition, err := obj.Definition.Interpolate()
-	if err != nil {
-		return nil, err
-	}
-
-	return &ExprPoly{
-		Definition: definition,
-	}, nil
-}
-
-// Copy returns a light copy of this struct. Anything static will not be copied.
-// This implementation intentionally does not copy anything, because the
-// Definition is already intended to be copied at each use site.
-func (obj *ExprPoly) Copy() (interfaces.Expr, error) {
-	return obj, nil
-}
-
-// Ordering returns a graph of the scope ordering that represents the data flow.
-// This can be used in SetScope so that it knows the correct order to run it in.
-func (obj *ExprPoly) Ordering(produces map[string]interfaces.Node) (*pgraph.Graph, map[interfaces.Node]string, error) {
-	return obj.Definition.Ordering(produces)
-}
-
-// SetScope stores the scope for use in this resource.
-func (obj *ExprPoly) SetScope(scope *interfaces.Scope, sctx map[string]interfaces.Expr) error {
-	panic("ExprPoly.SetScope(): should not happen, ExprVar should replace ExprPoly with a copy of its definition before calling SetScope")
-}
-
-// SetType is used to set the type of this expression once it is known. This
-// usually happens during type unification, but it can also happen during
-// parsing if a type is specified explicitly. Since types are static and don't
-// change on expressions, if you attempt to set a different type than what has
-// previously been set (when not initially known) this will error.
-func (obj *ExprPoly) SetType(typ *types.Type) error {
-	panic("ExprPoly.SetType(): should not happen, all ExprPoly expressions should be gone by the time type-checking starts")
-}
-
-// Type returns the type of this expression.
-func (obj *ExprPoly) Type() (*types.Type, error) {
-	return nil, interfaces.ErrTypeCurrentlyUnknown
-}
-
-// Infer returns the type of itself and a collection of invariants. The returned
-// type may contain unification variables. It collects the invariants by calling
-// Check on its children expressions. In making those calls, it passes in the
-// known type for that child to get it to "Check" it. When the type is not
-// known, it should create a new unification variable to pass in to the child
-// Check calls. Infer usually only calls Check on things inside of it, and often
-// does not call another Infer. This Infer should never be called.
-func (obj *ExprPoly) Infer() (*types.Type, []*interfaces.UnificationInvariant, error) {
-	panic("ExprPoly.Infer(): should not happen, all ExprPoly expressions should be gone by the time type-checking starts")
-}
-
-// Check is checking that the input type is equal to the object that Check is
-// running on. In doing so, it adds any invariants that are necessary. Check
-// must always call Infer to produce the invariant. The implementation can be
-// generic for all expressions.
-func (obj *ExprPoly) Check(typ *types.Type) ([]*interfaces.UnificationInvariant, error) {
-	return interfaces.GenericCheck(obj, typ)
-}
-
-// Graph returns the reactive function graph which is expressed by this node. It
-// includes any vertices produced by this node, and the appropriate edges to any
-// vertices that are produced by its children. Nodes which fulfill the Expr
-// interface directly produce vertices (and possible children) where as nodes
-// that fulfill the Stmt interface do not produces vertices, where as their
-// children might.
-func (obj *ExprPoly) Graph(env map[string]interfaces.Func) (*pgraph.Graph, interfaces.Func, error) {
-	panic("ExprPoly.Graph(): should not happen, all ExprPoly expressions should be gone by the time type-checking starts")
-}
-
-// SetValue here is a no-op, because algorithmically when this is called from
-// the func engine, the child fields (the dest lookup expr) will have had this
-// done to them first, and as such when we try and retrieve the set value from
-// this expression by calling `Value`, it will build it from scratch!
-func (obj *ExprPoly) SetValue(value types.Value) error {
-	// ignored, as we don't support ExprPoly.Value()
-	return nil
-}
-
-// Value returns the value of this expression in our type system. This will
-// usually only be valid once the engine has run and values have been produced.
-// This might get called speculatively (early) during unification to learn more.
-func (obj *ExprPoly) Value() (types.Value, error) {
-	return nil, fmt.Errorf("no value for ExprPoly")
 }
 
 // ExprTopLevel is intended to wrap top-level definitions. It captures the

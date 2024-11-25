@@ -197,17 +197,6 @@ func (obj *ExprParam) ScopeGraph(g *pgraph.Graph) {
 }
 
 // ScopeGraph adds nodes and vertices to the supplied graph.
-func (obj *ExprPoly) ScopeGraph(g *pgraph.Graph) {
-	g.AddVertex(obj)
-	definition, ok := obj.Definition.(interfaces.ScopeGrapher)
-	if !ok {
-		panic("can't graph scope") // programming error
-	}
-	definition.ScopeGraph(g)
-	g.AddEdge(obj, obj.Definition, &pgraph.SimpleEdge{Name: "def"})
-}
-
-// ScopeGraph adds nodes and vertices to the supplied graph.
 func (obj *ExprTopLevel) ScopeGraph(g *pgraph.Graph) {
 	g.AddVertex(obj)
 	definition, ok := obj.Definition.(interfaces.ScopeGrapher)

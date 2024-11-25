@@ -86,20 +86,9 @@ func FuncPrefixToFunctionsScope(prefix string) map[string]interfaces.Expr {
 		exprs[name] = fn
 	}
 
-	// Wrap every Expr in ExprPoly, so that the function can be used with
-	// different types. Those functions are all builtins, so they don't need
-	// to access the surrounding scope.
-	exprPolys := make(map[string]interfaces.Expr)
-	for name, expr := range exprs {
-		exprPolys[name] = &ExprPoly{
-			Definition: &ExprTopLevel{
-				Definition:    expr,
-				CapturedScope: interfaces.EmptyScope(),
-			},
-		}
-	}
+	// NOTE: We used to wrap every Expr in ExprPoly but this isn't used now.
 
-	return exprPolys
+	return exprs
 }
 
 // VarPrefixToVariablesScope is a helper function to return the variables
