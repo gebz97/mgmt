@@ -89,6 +89,7 @@ func init() {
 	edgeHalf     *ast.StmtEdgeHalf
 }
 
+%token NEWLINE
 %token OPEN_CURLY CLOSE_CURLY
 %token OPEN_PAREN CLOSE_PAREN
 %token OPEN_BRACK CLOSE_BRACK
@@ -154,7 +155,7 @@ prog:
 			Body: []interfaces.Stmt{},
 		}
 	}
-|	prog stmt
+|	prog stmt NEWLINE
 	{
 		posLast(yylex, yyDollar) // our pos
 		// TODO: should we just skip comments for now?
@@ -167,6 +168,11 @@ prog:
 				Body: stmts,
 			}
 		}
+	}
+// Skip over nil statements (like a newline)
+|	prog NEWLINE
+	{
+	// newline!
 	}
 ;
 stmt:
@@ -449,8 +455,20 @@ expr:
 	}
 ;
 list:
+	list_single
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = $1.expr
+	}
+|	list_multi
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = $1.expr
+	}
+;
+list_single:
 	// `[42, 0, -13]`
-	OPEN_BRACK list_elements CLOSE_BRACK
+	OPEN_BRACK list_elements_single CLOSE_BRACK
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.expr = &ast.ExprList{
@@ -458,28 +476,82 @@ list:
 		}
 	}
 ;
-list_elements:
+list_elements_single:
 	/* end of list */
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.exprs = []interfaces.Expr{}
 	}
-|	list_elements list_element
+|	list_elements_single COMMA list_element_single
 	{
 		posLast(yylex, yyDollar) // our pos
-		$$.exprs = append($1.exprs, $2.expr)
+		$$.exprs = append($1.exprs, $3.expr)
+	}
+|	list_element_single
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.exprs = append($$.exprs, $1.expr)
 	}
 ;
-list_element:
-	expr COMMA
+list_element_single:
+	expr
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.expr = $1.expr
 	}
 ;
+list_multi:
+	//`[
+	//	42,
+	//	0,
+	//	-13,
+	//]`
+	OPEN_BRACK NEWLINE list_elements_multi CLOSE_BRACK
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = &ast.ExprList{
+			Elements: $2.exprs,
+		}
+	}
+;
+list_elements_multi:
+	/* end of list */
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.exprs = []interfaces.Expr{}
+	}
+|	list_elements_multi list_element_multi
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.exprs = append($1.exprs, $2.expr)
+	}
+;
+list_element_multi:
+	expr COMMA NEWLINE
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = $1.expr
+	}
+|	NEWLINE
+	{
+	// newline!
+	}
+;
 map:
-	// `{"hello" => "there", "world" => "big",}`
-	OPEN_CURLY map_kvs CLOSE_CURLY
+	map_single
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = $1.expr
+	}
+|	map_multi
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = $1.expr
+	}
+;
+map_single:
+	// `{"hello" => "there", "world" => "big"}`
+	OPEN_CURLY map_kvs_single CLOSE_CURLY
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.expr = &ast.ExprMap{
@@ -487,26 +559,70 @@ map:
 		}
 	}
 ;
-map_kvs:
+map_kvs_single:
 	/* end of list */
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.mapKVs = []*ast.ExprMapKV{}
 	}
-|	map_kvs map_kv
+|	map_kvs_single COMMA map_kv_single
 	{
 		posLast(yylex, yyDollar) // our pos
-		$$.mapKVs = append($1.mapKVs, $2.mapKV)
+		$$.mapKVs = append($1.mapKVs, $3.mapKV)
+	}
+|	map_kv_single
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.mapKVs = append($$.mapKVs, $1.mapKV)
 	}
 ;
-map_kv:
-	expr ROCKET expr COMMA
+map_kv_single:
+	expr ROCKET expr
 	{
 		posLast(yylex, yyDollar) // our pos
 		$$.mapKV = &ast.ExprMapKV{
 			Key: $1.expr,
 			Val: $3.expr,
 		}
+	}
+;
+map_multi:
+	//`{
+	//	"hello" => "there",
+	//	"world" => "big",
+	//}`
+	OPEN_CURLY NEWLINE map_kvs_multi CLOSE_CURLY
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.expr = &ast.ExprMap{
+			KVs: $3.mapKVs,
+		}
+	}
+;
+map_kvs_multi:
+	/* end of list */
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.mapKVs = []*ast.ExprMapKV{}
+	}
+|	map_kvs_multi map_kv_multi
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.mapKVs = append($1.mapKVs, $2.mapKV)
+	}
+;
+map_kv_multi:
+	expr ROCKET expr COMMA NEWLINE
+	{
+		posLast(yylex, yyDollar) // our pos
+		$$.mapKV = &ast.ExprMapKV{
+			Key: $1.expr,
+			Val: $3.expr,
+		}
+	}
+|	NEWLINE
+	{
+	// newline!
 	}
 ;
 struct:
