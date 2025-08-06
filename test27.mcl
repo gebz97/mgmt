@@ -1,0 +1,2 @@
+collect file["/tmp/foo"] {
+}

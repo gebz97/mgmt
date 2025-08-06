@@ -1,0 +1,6 @@
+func foo($a func()) {
+  $a()
+}
+
+foo(func() {
+})

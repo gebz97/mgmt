@@ -1,0 +1,5 @@
+class foo($a str) {
+  $b = $a + 1
+}
+
+include foo(1)

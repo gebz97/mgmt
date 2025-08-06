@@ -1,0 +1,7 @@
+func foo($a int) {
+  if $a > 0 {
+    foo($a - 1)
+  }
+}
+
+foo(1000)

@@ -1,0 +1,4 @@
+--- a/test4.mcl
++++ b/test4.mcl
+@@ -0,0 +1 @@
++$a = len("hello", "world")

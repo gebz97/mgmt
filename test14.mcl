@@ -1,0 +1,4 @@
+$a = [1, "a", true]
+for $i, $v in $a {
+  $b = $v + 1
+}

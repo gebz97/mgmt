@@ -1,0 +1,8 @@
+func foo() {
+  $a = []
+  for $i, $v in range(10000) {
+    $a = $a + [$i]
+  }
+}
+
+foo()

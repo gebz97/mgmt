@@ -1,0 +1,3 @@
+file "/tmp/foo" {
+  content => 1 ?: "a"
+}

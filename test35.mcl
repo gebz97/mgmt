@@ -1,0 +1,2 @@
+$a = true || panic("short-circuit")
+$b = false && panic("short-circuit")

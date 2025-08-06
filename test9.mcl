@@ -1,0 +1,5 @@
+func foo($a []map[str]int) str {
+  return $a[0]["a"]
+}
+
+$b = foo([ { "a" => 1 } ]) + "a"
